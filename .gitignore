@@ -16,3 +16,9 @@ reference/
 causal-conv1d/
 work_dirs/
 __pycache__/
+output/
+vim/wandb/
+wandb/
+vim/mlruns/
+cuda_12.1.0_530.30.02_linux.run
+cuda_12.4.0_550.54.14_linux.run

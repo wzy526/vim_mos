@@ -1,0 +1,12 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Request Slurm Node N4",
+            "type": "shell",
+            "command": "srun -p G4090 -w n4 --ntasks-per-node 4 --nodes 1 --gpus-per-node 8 --cpus-per-task 32 --mem 40G -J debug --pty bash",
+            "isBackground": true,
+            "problemMatcher": []
+        }
+    ]
+}

@@ -158,7 +158,7 @@ def get_args_parser():
     parser.add_argument('--attn-only', action='store_true') 
     
     # Dataset parameters
-    parser.add_argument('--data-path', default='/datasets01/imagenet_full_size/061417/', type=str,
+    parser.add_argument('--data-path', default='', type=str,
                         help='dataset path')
     parser.add_argument('--data-set', default='IMNET', choices=['CIFAR', 'IMNET', 'INAT', 'INAT19'],
                         type=str, help='Image Net dataset path')
@@ -216,6 +216,12 @@ def get_args_parser():
     parser.set_defaults(if_random_token_rank=False)
 
     parser.add_argument('--local-rank', default=0, type=int)
+
+    # wandb about
+    parser.add_argument('--use_wandb', type=bool, default=False, help='enable logging to Weights and Biases')
+    parser.add_argument('--wandb_project', type=str, default='MOS', help='wandb project name')
+    parser.add_argument('--wandb_entity', type=str, default='ziyiw0526', help='wandb username')
+    parser.add_argument('--wandb_name', type=str, default='', help='wandb run name')
     return parser
 
 
@@ -242,7 +248,15 @@ def main(args):
     if args.local_rank == 0 and args.gpu == 0:
         mlflow.start_run(run_name=run_name)
         for key, value in vars(args).items():
-            mlflow.log_param(key, value)
+            mlflow.log_param(key, value) 
+    
+    # wandb init
+    global_rank = utils.get_rank()
+    if global_rank == 0 and args.use_wandb:
+        # init wandbs
+        wandb_logger = utils.WandbLogger(args)
+    else: 
+        wandb_logger = None
 
     dataset_train, args.nb_classes = build_dataset(is_train=True, args=args)
     dataset_val, _ = build_dataset(is_train=False, args=args)
@@ -480,6 +494,8 @@ def main(args):
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
+        if wandb_logger:
+            wandb_logger.set_steps()
 
         train_stats = train_one_epoch(
             model, criterion, data_loader_train,
@@ -487,6 +503,7 @@ def main(args):
             args.clip_grad, model_ema, mixup_fn,
             set_training_mode=args.train_mode,  # keep in eval mode for deit finetuning / train mode for training and deit III finetuning
             args=args,
+            wandb_logger=wandb_logger
         )
 
         lr_scheduler.step(epoch)
@@ -533,8 +550,10 @@ def main(args):
         if args.local_rank == 0 and args.gpu == 0:
             for key, value in log_stats.items():
                 mlflow.log_metric(key, value, log_stats['epoch'])
-        
-        
+
+        if wandb_logger:
+            wandb_logger.log_epoch_metrics(log_stats)
+
         if args.output_dir and utils.is_main_process():
             with (output_dir / "log.txt").open("a") as f:
                 f.write(json.dumps(log_stats) + "\n")
@@ -542,6 +561,9 @@ def main(args):
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
+
+    if args.local_rank == 0 and wandb_logger:
+        wandb_logger.finish()
 
 
 if __name__ == '__main__':

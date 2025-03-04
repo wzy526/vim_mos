@@ -21,6 +21,8 @@ from mamba_ssm.modules.mamba_simple import Mamba
 from mamba_ssm.utils.generation import GenerationMixin
 from mamba_ssm.utils.hf import load_config_hf, load_state_dict_hf
 
+from mamba_ssm.modules.vim_mos import VIM_MOS as Mos
+
 from rope import *
 import random
 
@@ -142,6 +144,7 @@ class Block(nn.Module):
 def create_block(
     d_model,
     d_state=16,
+    d_expert=None,
     ssm_cfg=None,
     norm_epsilon=1e-5,
     drop_path=0.,
@@ -162,7 +165,7 @@ def create_block(
         ssm_cfg = {}
     factory_kwargs = {"device": device, "dtype": dtype}
     # import ipdb; ipdb.set_trace()
-    mixer_cls = partial(Mamba, d_state=d_state, layer_idx=layer_idx, bimamba_type=bimamba_type, if_divide_out=if_divide_out, init_layer_scale=init_layer_scale, **ssm_cfg, **factory_kwargs)
+    mixer_cls = partial(Mos, d_state=d_state, d_expert=d_expert, layer_idx=layer_idx, bimamba_type=bimamba_type, if_divide_out=if_divide_out, init_layer_scale=init_layer_scale, **ssm_cfg, **factory_kwargs)
     norm_cls = partial(
         nn.LayerNorm if not rms_norm else RMSNorm, eps=norm_epsilon, **factory_kwargs
     )
@@ -234,6 +237,7 @@ class VisionMamba(nn.Module):
                  depth=24, 
                  embed_dim=192, 
                  d_state=16,
+                 d_expert=None,
                  channels=3, 
                  num_classes=1000,
                  ssm_cfg=None, 
@@ -322,6 +326,7 @@ class VisionMamba(nn.Module):
                 create_block(
                     embed_dim,
                     d_state=d_state,
+                    d_expert=d_expert,
                     ssm_cfg=ssm_cfg,
                     norm_epsilon=norm_epsilon,
                     rms_norm=rms_norm,
@@ -555,7 +560,7 @@ class VisionMamba(nn.Module):
 @register_model
 def vim_tiny_patch16_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2(pretrained=False, **kwargs):
     model = VisionMamba(
-        patch_size=16, embed_dim=192, depth=24, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=True, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_divide_out=True, use_middle_cls_token=True, **kwargs)
+        patch_size=16, embed_dim=192, depth=24, d_expert=4, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=True, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_divide_out=True, use_middle_cls_token=True, **kwargs)
     model.default_cfg = _cfg()
     if pretrained:
         checkpoint = torch.hub.load_state_dict_from_url(
