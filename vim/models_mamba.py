@@ -143,7 +143,7 @@ class Block(nn.Module):
 
 def create_block(
     d_model,
-    d_state=16,
+    d_state=64,
     d_expert=None,
     ssm_cfg=None,
     norm_epsilon=1e-5,
@@ -164,8 +164,13 @@ def create_block(
     if ssm_cfg is None:
         ssm_cfg = {}
     factory_kwargs = {"device": device, "dtype": dtype}
+
+
     # import ipdb; ipdb.set_trace()
     mixer_cls = partial(Mos, d_state=d_state, d_expert=d_expert, layer_idx=layer_idx, bimamba_type=bimamba_type, if_divide_out=if_divide_out, init_layer_scale=init_layer_scale, **ssm_cfg, **factory_kwargs)
+    
+    # mixer_cls = partial(Mamba, d_state=d_state, layer_idx=layer_idx, bimamba_type=bimamba_type, if_divide_out=if_divide_out, init_layer_scale=init_layer_scale, **ssm_cfg, **factory_kwargs)
+    
     norm_cls = partial(
         nn.LayerNorm if not rms_norm else RMSNorm, eps=norm_epsilon, **factory_kwargs
     )
@@ -236,7 +241,7 @@ class VisionMamba(nn.Module):
                  stride=16,
                  depth=24, 
                  embed_dim=192, 
-                 d_state=16,
+                 d_state=64,
                  d_expert=None,
                  channels=3, 
                  num_classes=1000,
@@ -457,7 +462,6 @@ class VisionMamba(nn.Module):
 
 
 
-
         if_flip_img_sequences = False
         if self.flip_img_sequences_ratio > 0 and (self.flip_img_sequences_ratio - random.random()) > 1e-5:
             x = x.flip([1])
@@ -556,11 +560,23 @@ class VisionMamba(nn.Module):
             x = x.max(dim=1)[0]
         return x
 
+@register_model
+def baseline_vim_tiny_patch16_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2(pretrained=False, **kwargs):
+    model = VisionMamba(
+        patch_size=16, embed_dim=192, depth=24, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=True, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_divide_out=True, use_middle_cls_token=True, **kwargs)
+    model.default_cfg = _cfg()
+    if pretrained:
+        checkpoint = torch.hub.load_state_dict_from_url(
+            url="to.do",
+            map_location="cpu", check_hash=True
+        )
+        model.load_state_dict(checkpoint["model"])
+    return model
 
 @register_model
 def vim_tiny_patch16_224_bimambav2_final_pool_mean_abs_pos_embed_with_midclstok_div2(pretrained=False, **kwargs):
     model = VisionMamba(
-        patch_size=16, embed_dim=192, depth=24, d_expert=4, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=True, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_divide_out=True, use_middle_cls_token=True, **kwargs)
+        patch_size=16, embed_dim=192, d_state=64, depth=24, d_expert=4, rms_norm=True, residual_in_fp32=True, fused_add_norm=True, final_pool_type='mean', if_abs_pos_embed=True, if_rope=False, if_rope_residual=False, bimamba_type="v2", if_cls_token=True, if_divide_out=True, use_middle_cls_token=True, **kwargs)
     model.default_cfg = _cfg()
     if pretrained:
         checkpoint = torch.hub.load_state_dict_from_url(

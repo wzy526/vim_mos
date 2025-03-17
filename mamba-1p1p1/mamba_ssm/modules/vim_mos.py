@@ -36,12 +36,14 @@ class MLP(nn.Module):
     def __init__(self, d_in, d_hidden, d_out):
         super().__init__()
         self.fc1 = nn.Linear(d_in, d_hidden)
+        self.norm = nn.LayerNorm(d_hidden)
         self.act = nn.SiLU()
         self.fc2 = nn.Linear(d_hidden, d_out)
         self.act_out = nn.Sigmoid()
 
     def forward(self, x):
         x = self.fc1(x)
+        x = self.norm(x)
         x = self.act(x)
         x = self.fc2(x)
         x = self.act_out(x)
@@ -51,7 +53,7 @@ class VIM_MOS(nn.Module):
     def __init__(
         self,
         d_model,
-        d_state=16,
+        d_state=64,
         d_conv=4,
         expand=2,
         dt_rank="auto",
@@ -110,7 +112,7 @@ class VIM_MOS(nn.Module):
         )
         self.dt_proj = nn.Linear(self.dt_rank, self.d_inner, bias=True, **factory_kwargs)
 
-        self.mlp = MLP(self.d_inner, self.d_inner, self.num_experts)
+        self.mlp = MLP(self.d_inner, self.num_experts * 4, self.num_experts)
 
         # Initialize special dt projection to preserve variance at initialization
         dt_init_std = self.dt_rank**-0.5 * dt_scale
@@ -272,7 +274,7 @@ class VIM_MOS(nn.Module):
                 # 使用MLP生成动态权重
                 dynamic_w = self.mlp(x_reshaped)  # (b, l, num_experts)
                 dynamic_w = rearrange(dynamic_w, "b l h -> b h l") # 将动态权重转换为(b, num_experts, l)的形状
-                dynamic_w = F.softmax(dynamic_w, dim=1) # 确保动态权重在每个头上的和为1
+                # dynamic_w = F.softmax(dynamic_w, dim=1) # 确保动态权重在每个头上的和为1
 
                 #  扩展动态权重的维度以匹配y_list中每个y_i的形状
                 dynamic_w = dynamic_w.unsqueeze(2)  # (b, num_experts, 1, l) 等价于num_experts个(b, 1, l)
@@ -435,7 +437,7 @@ class VIM_MOS(nn.Module):
             dynamic_w = rearrange(dynamic_w, "b l h -> b h l")
             
             # 确保动态权重在每个头上的和为1
-            dynamic_w = F.softmax(dynamic_w, dim=1)
+            # dynamic_w = F.softmax(dynamic_w, dim=1)
             
             # 扩展动态权重的维度以匹配y_list中每个y_i的形状
             dynamic_w = dynamic_w.unsqueeze(2)  # (b, num_experts, 1, l) 等价于num_experts个(b, 1, l)
@@ -451,7 +453,7 @@ class VIM_MOS(nn.Module):
             y = rearrange(y, "b d l -> b l d") # (b, seqlen, d_inner)
             yb = rearrange(yb, "b d l -> b l d") # (b, seqlen, d_inner)
 
-            out = y + yb.flip([-1]) # (b, seqlen, d_inner)
+            out = y + yb.flip([1]) # (b, seqlen, d_inner)
 
             if not self.if_divide_out:
                 out = F.linear(out, self.out_proj.weight, self.out_proj.bias)
